@@ -10,9 +10,9 @@ const ChatSchema = z.object({
 });
 
 // Helper para formatar task para exibição no chat
-function formatTaskForChat(task: { 
-  id: string; 
-  request_raw: string; 
+function formatTaskForChat(task: {
+  id: string;
+  request_raw: string;
   title_enhanced?: string | null;
   status: string;
   priority?: string;
@@ -57,7 +57,7 @@ async function processLocalCommand(
   // Comando: add
   if (lowerMessage.startsWith("add:") || lowerMessage.startsWith("adicionar:")) {
     const taskText = message.replace(/^(add:|adicionar:)\s*/i, "").trim();
-    
+
     if (!taskText) {
       return {
         reply: "❓ What task would you like to add? Try: **add: your task description**",
@@ -111,7 +111,7 @@ async function processLocalCommand(
   const doneMatch = message.match(/^(done|concluir|complete)[:\s]+([a-f0-9-]+)/i);
   if (doneMatch) {
     const taskIdPartial = doneMatch[2].trim();
-    
+
     // Buscar task que começa com o ID parcial
     const { data: tasks } = await supabaseAdmin
       .from("tasks")
@@ -152,7 +152,7 @@ async function processLocalCommand(
       reply: `🤖 **Here's what I can do:**
 
 • **add: [task]** - Create a new task
-• **list** - Show your recent tasks  
+• **list** - Show your recent tasks
 • **done: [task_id]** - Mark a task complete
 
 Or just chat with me naturally! I'll do my best to help. 💬`,
@@ -183,7 +183,7 @@ export async function POST(req: Request) {
 
     // Primeiro, tentar processar comandos localmente
     const localResult = await processLocalCommand(message, user.id, user.identifier);
-    
+
     if (localResult.handled) {
       return NextResponse.json({
         reply: localResult.reply,
@@ -226,10 +226,10 @@ Try one of these commands:
     }
 
     const data = await resp.json().catch(() => ({}));
-    
+
     // Verificar se n8n retornou uma resposta válida
     const reply = data.reply ?? data.message ?? data.output ?? data.text;
-    
+
     if (!reply || reply === "Command processed successfully.") {
       // n8n não retornou resposta útil, dar fallback amigável
       return NextResponse.json({

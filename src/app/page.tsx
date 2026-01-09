@@ -8,7 +8,6 @@ import { Task } from "@/types";
 import { UserKeyInput } from "@/components/UserKeyInput";
 import { AddTaskForm } from "@/components/AddTaskForm";
 import { TaskList } from "@/components/TaskList";
-import { ChatPanel } from "@/components/ChatPanel";
 
 export default function Home() {
   const [identifier, setIdentifier] = useState<string | null>(null);
@@ -296,9 +295,6 @@ export default function Home() {
           Last updated: {lastRefresh.toLocaleTimeString()}
         </motion.div>
       </main>
-
-      {/* Chat Panel */}
-      <ChatPanel identifier={identifier} onTaskCreated={fetchTasks} />
     </div>
   );
 }
