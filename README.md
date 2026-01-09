@@ -11,11 +11,7 @@ A full-stack, asynchronous task management system leveraging Generative AI for a
 
 ## Demo
 
-https://github.com/user-attachments/assets/demo.mp4
-
-<video src="assets/demo.mp4" width="100%" autoplay loop muted playsinline>
-  Your browser does not support the video tag.
-</video>
+![Application Demo](assets/demo.gif)
 
 *The task is created instantly via UI while background workers (n8n) enrich the data with priority, tags, and steps without blocking the user.*
 
