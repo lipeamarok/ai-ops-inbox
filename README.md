@@ -1,4 +1,4 @@
-# AI Ops Inbox 🚀
+# AI Ops Inbox
 
 > Transform messy requests into actionable tasks with AI-powered enhancement
 
@@ -8,7 +8,7 @@ A modern task management application that uses AI to automatically enhance your 
 ![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?style=flat-square&logo=supabase)
 ![n8n](https://img.shields.io/badge/n8n-Automation-EA4B71?style=flat-square&logo=n8n)
 
-## ✨ Features
+## Features
 
 - **AI-Enhanced Tasks**: When you add a task, AI automatically generates:
   - Clear, actionable title
@@ -18,10 +18,10 @@ A modern task management application that uses AI to automatically enhance your 
   - Step-by-step breakdown
 
 - **CRUD Operations**: Full task management
-  - ✅ Create tasks
-  - ✏️ Edit tasks
-  - ✔️ Mark as complete
-  - 🗑️ Delete tasks
+  - Create tasks
+  - Edit tasks
+  - Mark as complete
+  - Delete tasks
 
 - **Chatbot Interface**: Manage tasks via conversational commands
   - `add: [task]` - Create a new task
@@ -32,7 +32,7 @@ A modern task management application that uses AI to automatically enhance your 
 
 - **Real-time Updates**: Polling for AI enrichment updates
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -56,13 +56,13 @@ A modern task management application that uses AI to automatically enhance your 
          ▼                         ▼              ▼
 ┌─────────────────┐      ┌─────────────────┐    ┌─────────────────┐
 │   SUPABASE      │      │    n8n Cloud    │    │   OpenAI API    │
-│   (PostgreSQL)  │◄─────│   (Workflows)   │───►│   (GPT-4o-mini) │
+│   (PostgreSQL)  │◄─────│   (Workflows)   │───►│   (GPT-5.1)     │
 │   - tasks       │      │   - Enrichment  │    └─────────────────┘
 │   - task_steps  │      │   - Chat Bot    │
 └─────────────────┘      └─────────────────┘
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -108,7 +108,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000)
 
-## 📊 Database Schema
+## Database Schema
 
 Run this SQL in your Supabase SQL Editor:
 
@@ -162,7 +162,7 @@ for each row execute function public.set_updated_at();
 
 **Important:** Disable RLS for testing (Table Editor → tasks → RLS: OFF)
 
-## 🔧 n8n Workflows
+## n8n Workflows
 
 ### Workflow A: Task Enrichment
 
@@ -230,7 +230,7 @@ ai-ops-inbox/
 └── README.md
 ```
 
-## 🔌 API Endpoints
+## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -243,7 +243,7 @@ ai-ops-inbox/
 | `POST` | `/api/tasks/:id/enrichment` | Receive AI enrichment |
 | `POST` | `/api/chat` | Send chat command |
 
-## 🚢 Deployment
+## Deployment
 
 ### Deploy to Vercel
 
@@ -254,7 +254,7 @@ ai-ops-inbox/
 
 After first deploy, update `APP_BASE_URL` with your Vercel URL.
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Frontend:** Next.js 15, React, Tailwind CSS
 - **Backend:** Next.js API Routes
@@ -263,10 +263,11 @@ After first deploy, update `APP_BASE_URL` with your Vercel URL.
 - **AI:** OpenAI GPT-4o-mini
 - **Hosting:** Vercel
 
-## 📝 License
+## License
 
 MIT
 
 ---
 
-Built with ❤️ for the AI Automation Developer Challenge
+Built with ❤️
+by @lipeamarok

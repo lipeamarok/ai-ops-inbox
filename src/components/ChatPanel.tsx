@@ -7,11 +7,11 @@ import { MessageSquare, X, Send, Bot, Sparkles, Loader2 } from "lucide-react";
 import clsx from "clsx";
 
 interface ChatPanelProps {
-  userKey: string;
+  identifier: string;
   onTaskCreated?: () => void;
 }
 
-export function ChatPanel({ userKey, onTaskCreated }: ChatPanelProps) {
+export function ChatPanel({ identifier, onTaskCreated }: ChatPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -60,7 +60,7 @@ Try saying "add: Schedule dentist appointment"`,
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_key: userKey,
+          identifier: identifier,
           message: input.trim(),
         }),
       });

@@ -1,13 +1,29 @@
+// ============================================
+// User Types
+// ============================================
+
+export interface User {
+  id: string;
+  identifier: string;
+  display_name: string | null;
+  created_at: string;
+}
+
+// ============================================
+// Task Types
+// ============================================
+
 export interface Task {
   id: string;
-  user_key: string;
+  user_id: string;
+  user_key?: string; // Legado, mantido para compatibilidade
   source: string;
   request_raw: string;
   title_enhanced: string | null;
-  priority: string;
-  tags: string[];
+  priority: "low" | "medium" | "high";
+  tags: string[]; // No frontend sempre é array
   next_action: string | null;
-  status: string;
+  status: "open" | "done";
   created_at: string;
   updated_at: string;
   steps?: TaskStep[];
@@ -22,11 +38,18 @@ export interface TaskStep {
   created_at: string;
 }
 
-export interface ChatMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp: Date;
+// ============================================
+// API Request/Response Types
+// ============================================
+
+export interface CreateTaskRequest {
+  identifier: string;
+  request_raw: string;
+  source?: string;
+}
+
+export interface ResolveUserRequest {
+  identifier: string;
 }
 
 export interface EnrichmentPayload {
@@ -35,4 +58,20 @@ export interface EnrichmentPayload {
   tags: string[];
   next_action?: string;
   steps: string[];
+}
+
+// ============================================
+// Chat Types
+// ============================================
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+}
+
+export interface ChatRequest {
+  identifier: string;
+  message: string;
 }

@@ -1,43 +1,78 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { supabase } from "@/lib/supabase";
+import { supabaseAdmin } from "@/lib/supabase-server";
+import { resolveUserId, parseTagsFromDb } from "@/lib/user-utils";
+import { Task, TaskStep } from "@/types";
 
-// Schema de validação para criar task
+// ============================================
+// Helper: JSON Response com UTF-8 explícito
+// ============================================
+function jsonResponse(data: unknown, status: number = 200): NextResponse {
+  return new NextResponse(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+    },
+  });
+}
+
+// ============================================
+// POST /api/tasks - Criar nova task
+// ============================================
+
 const CreateTaskSchema = z.object({
-  user_key: z.string().min(1, "user_key is required"),
+  identifier: z.string().min(1, "identifier is required"),
   request_raw: z.string().min(1, "request_raw is required"),
   source: z.string().optional().default("web"),
 });
 
-// POST /api/tasks - Criar nova task
 export async function POST(req: Request) {
   try {
     const json = await req.json().catch(() => null);
     const parsed = CreateTaskSchema.safeParse(json);
 
     if (!parsed.success) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "Invalid body", details: parsed.error.flatten() },
-        { status: 400 }
+        400
       );
     }
 
-    const { user_key, request_raw, source } = parsed.data;
+    const { identifier, request_raw, source } = parsed.data;
+
+    // Resolver user_id a partir do identifier
+    const user = await resolveUserId(identifier);
 
     // Inserir task no Supabase
-    const { data: task, error } = await supabase
+    const { data: taskData, error } = await supabaseAdmin
       .from("tasks")
-      .insert([{ user_key, request_raw, source, status: "open" }])
+      .insert([
+        {
+          user_id: user.id,
+          user_key: user.identifier, // Compatibilidade legado
+          request_raw,
+          source,
+          status: "open",
+          // tags será preenchido pelo enrichment
+        },
+      ])
       .select("*")
       .single();
 
-    if (error || !task) {
+    if (error || !taskData) {
       console.error("Supabase insert error:", error);
-      return NextResponse.json(
+      return jsonResponse(
         { error: "Failed to insert task", details: error },
-        { status: 500 }
+        500
       );
     }
+
+    // Formatar task para resposta (converter tags para array)
+    const task: Task = {
+      ...taskData,
+      tags: parseTagsFromDb(taskData.tags),
+      steps: [],
+    };
 
     // Disparar webhook do n8n para enriquecimento (fire-and-forget)
     const n8nUrl = process.env.N8N_TASK_WEBHOOK_URL;
@@ -47,89 +82,101 @@ export async function POST(req: Request) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           task_id: task.id,
-          user_key,
+          identifier: user.identifier,
           request_raw,
           source,
-          app_base_url: process.env.APP_BASE_URL,
+          app_base_url: process.env.APP_BASE_URL || "https://ai-ops-inbox.vercel.app",
         }),
       }).catch((err) => {
         console.error("n8n webhook error (non-blocking):", err);
       });
     }
 
-    return NextResponse.json({ task }, { status: 201 });
+    return jsonResponse({ task }, 201);
   } catch (err) {
     console.error("Unexpected error:", err);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
+    return jsonResponse(
+      { error: "Internal server error", details: String(err) },
+      500
     );
   }
 }
 
-// GET /api/tasks?user_key=... - Listar tasks do usuário
+// ============================================
+// GET /api/tasks?identifier=... - Listar tasks do usuário
+// ============================================
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-    const user_key = url.searchParams.get("user_key");
+    const identifier = url.searchParams.get("identifier");
 
-    if (!user_key) {
-      return NextResponse.json(
-        { error: "user_key query parameter is required" },
-        { status: 400 }
+    if (!identifier) {
+      return jsonResponse(
+        { error: "identifier query parameter is required" },
+        400
       );
     }
 
-    // Buscar tasks
-    const { data: tasks, error: taskErr } = await supabase
+    // Resolver user_id
+    const user = await resolveUserId(identifier);
+
+    // Buscar tasks do usuário
+    const { data: tasksData, error: tasksError } = await supabaseAdmin
       .from("tasks")
       .select("*")
-      .eq("user_key", user_key)
+      .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
-    if (taskErr) {
-      console.error("Supabase fetch error:", taskErr);
-      return NextResponse.json(
-        { error: "Failed to fetch tasks", details: taskErr },
-        { status: 500 }
+    if (tasksError) {
+      console.error("Supabase select error:", tasksError);
+      return jsonResponse(
+        { error: "Failed to fetch tasks", details: tasksError },
+        500
       );
     }
 
-    const taskList = tasks ?? [];
-    const taskIds = taskList.map((t) => t.id);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const stepsByTask: Record<string, any[]> = {};
+    const tasks = tasksData || [];
 
-    // Buscar steps se houver tasks
-    if (taskIds.length > 0) {
-      const { data: steps, error: stepsErr } = await supabase
-        .from("task_steps")
-        .select("*")
-        .in("task_id", taskIds)
-        .order("step_order", { ascending: true });
-
-      if (!stepsErr && steps) {
-        for (const s of steps) {
-          if (!stepsByTask[s.task_id]) {
-            stepsByTask[s.task_id] = [];
-          }
-          stepsByTask[s.task_id].push(s);
-        }
-      }
+    // Se não há tasks, retornar lista vazia
+    if (tasks.length === 0) {
+      return jsonResponse({ tasks: [], user }, 200);
     }
 
-    // Combinar tasks com seus steps
-    const enrichedTasks = taskList.map((t) => ({
+    // Buscar steps de todas as tasks
+    const taskIds = tasks.map((t) => t.id);
+    const { data: stepsData, error: stepsError } = await supabaseAdmin
+      .from("task_steps")
+      .select("*")
+      .in("task_id", taskIds)
+      .order("step_order", { ascending: true });
+
+    if (stepsError) {
+      console.error("Supabase steps error:", stepsError);
+    }
+
+    // Agrupar steps por task_id
+    const stepsByTaskId: Record<string, TaskStep[]> = {};
+    (stepsData || []).forEach((step) => {
+      if (!stepsByTaskId[step.task_id]) {
+        stepsByTaskId[step.task_id] = [];
+      }
+      stepsByTaskId[step.task_id].push(step as TaskStep);
+    });
+
+    // Formatar tasks para resposta
+    const formattedTasks: Task[] = tasks.map((t) => ({
       ...t,
-      steps: stepsByTask[t.id] ?? [],
+      tags: parseTagsFromDb(t.tags),
+      steps: stepsByTaskId[t.id] || [],
     }));
 
-    return NextResponse.json({ tasks: enrichedTasks });
+    return jsonResponse({ tasks: formattedTasks, user }, 200);
   } catch (err) {
     console.error("Unexpected error:", err);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
+    return jsonResponse(
+      { error: "Internal server error", details: String(err) },
+      500
     );
   }
 }

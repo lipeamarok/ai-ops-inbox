@@ -1,62 +1,91 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { supabase } from "@/lib/supabase";
-
-// Schema de validação para atualizar task
-const UpdateTaskSchema = z.object({
-  request_raw: z.string().min(1).optional(),
-  title_enhanced: z.string().min(1).optional(),
-  priority: z.string().optional(),
-  tags: z.array(z.string()).optional(),
-  next_action: z.string().optional(),
-  status: z.string().optional(),
-});
+import { supabaseAdmin } from "@/lib/supabase-server";
+import { resolveUserId, parseTagsFromDb, isValidUUID } from "@/lib/user-utils";
+import { Task, TaskStep } from "@/types";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-// GET /api/tasks/[id] - Buscar task específica
+// ============================================
+// GET /api/tasks/[id]?identifier=... - Buscar task específica
+// ============================================
+
 export async function GET(req: Request, context: RouteContext) {
   try {
-    const { id } = await context.params;
+    const { id: taskId } = await context.params;
+    const url = new URL(req.url);
+    const identifier = url.searchParams.get("identifier");
 
-    const { data: task, error } = await supabase
+    if (!identifier) {
+      return NextResponse.json(
+        { error: "identifier query parameter is required" },
+        { status: 400 }
+      );
+    }
+
+    if (!isValidUUID(taskId)) {
+      return NextResponse.json(
+        { error: "Invalid task ID format" },
+        { status: 400 }
+      );
+    }
+
+    // Resolver user_id
+    const user = await resolveUserId(identifier);
+
+    // Buscar task
+    const { data: taskData, error: taskError } = await supabaseAdmin
       .from("tasks")
       .select("*")
-      .eq("id", id)
+      .eq("id", taskId)
+      .eq("user_id", user.id)
       .single();
 
-    if (error || !task) {
+    if (taskError || !taskData) {
       return NextResponse.json(
-        { error: "Task not found", details: error },
+        { error: "Task not found" },
         { status: 404 }
       );
     }
 
     // Buscar steps
-    const { data: steps } = await supabase
+    const { data: stepsData } = await supabaseAdmin
       .from("task_steps")
       .select("*")
-      .eq("task_id", id)
+      .eq("task_id", taskId)
       .order("step_order", { ascending: true });
 
-    return NextResponse.json({
-      task: { ...task, steps: steps ?? [] },
-    });
+    // Formatar task
+    const task: Task = {
+      ...taskData,
+      tags: parseTagsFromDb(taskData.tags),
+      steps: (stepsData || []) as TaskStep[],
+    };
+
+    return NextResponse.json({ task }, { status: 200 });
   } catch (err) {
     console.error("Unexpected error:", err);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Internal server error", details: String(err) },
       { status: 500 }
     );
   }
 }
 
-// PUT /api/tasks/[id] - Atualizar task
+// ============================================
+// PUT /api/tasks/[id] - Atualizar task (request_raw)
+// ============================================
+
+const UpdateTaskSchema = z.object({
+  identifier: z.string().min(1, "identifier is required"),
+  request_raw: z.string().min(1, "request_raw is required"),
+});
+
 export async function PUT(req: Request, context: RouteContext) {
   try {
-    const { id } = await context.params;
+    const { id: taskId } = await context.params;
     const json = await req.json().catch(() => null);
     const parsed = UpdateTaskSchema.safeParse(json);
 
@@ -67,36 +96,89 @@ export async function PUT(req: Request, context: RouteContext) {
       );
     }
 
-    const { data, error } = await supabase
-      .from("tasks")
-      .update(parsed.data)
-      .eq("id", id)
-      .select("*")
-      .single();
-
-    if (error || !data) {
+    if (!isValidUUID(taskId)) {
       return NextResponse.json(
-        { error: "Failed to update task", details: error },
-        { status: 500 }
+        { error: "Invalid task ID format" },
+        { status: 400 }
       );
     }
 
-    return NextResponse.json({ task: data });
+    const { identifier, request_raw } = parsed.data;
+    const user = await resolveUserId(identifier);
+
+    // Atualizar task
+    const { data: taskData, error } = await supabaseAdmin
+      .from("tasks")
+      .update({
+        request_raw,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", taskId)
+      .eq("user_id", user.id)
+      .select("*")
+      .single();
+
+    if (error || !taskData) {
+      return NextResponse.json(
+        { error: "Task not found or update failed" },
+        { status: 404 }
+      );
+    }
+
+    const task: Task = {
+      ...taskData,
+      tags: parseTagsFromDb(taskData.tags),
+    };
+
+    return NextResponse.json({ task }, { status: 200 });
   } catch (err) {
     console.error("Unexpected error:", err);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Internal server error", details: String(err) },
       { status: 500 }
     );
   }
 }
 
-// DELETE /api/tasks/[id] - Deletar task
+// ============================================
+// DELETE /api/tasks/[id]?identifier=... - Deletar task
+// ============================================
+
 export async function DELETE(req: Request, context: RouteContext) {
   try {
-    const { id } = await context.params;
+    const { id: taskId } = await context.params;
+    const url = new URL(req.url);
+    const identifier = url.searchParams.get("identifier");
 
-    const { error } = await supabase.from("tasks").delete().eq("id", id);
+    // Também aceitar identifier no body
+    let resolvedIdentifier = identifier;
+    if (!resolvedIdentifier) {
+      const json = await req.json().catch(() => null);
+      resolvedIdentifier = json?.identifier;
+    }
+
+    if (!resolvedIdentifier) {
+      return NextResponse.json(
+        { error: "identifier is required (query param or body)" },
+        { status: 400 }
+      );
+    }
+
+    if (!isValidUUID(taskId)) {
+      return NextResponse.json(
+        { error: "Invalid task ID format" },
+        { status: 400 }
+      );
+    }
+
+    const user = await resolveUserId(resolvedIdentifier);
+
+    // Deletar task (steps são deletados por CASCADE)
+    const { error } = await supabaseAdmin
+      .from("tasks")
+      .delete()
+      .eq("id", taskId)
+      .eq("user_id", user.id);
 
     if (error) {
       return NextResponse.json(
@@ -105,11 +187,11 @@ export async function DELETE(req: Request, context: RouteContext) {
       );
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true }, { status: 200 });
   } catch (err) {
     console.error("Unexpected error:", err);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Internal server error", details: String(err) },
       { status: 500 }
     );
   }

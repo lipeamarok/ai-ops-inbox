@@ -11,36 +11,36 @@ import { TaskList } from "@/components/TaskList";
 import { ChatPanel } from "@/components/ChatPanel";
 
 export default function Home() {
-  const [userKey, setUserKey] = useState<string | null>(null);
+  const [identifier, setIdentifier] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
-  // Verificar se há userKey na URL ou localStorage
+  // Verificar se há identifier na URL ou localStorage
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      const urlUserKey = params.get("user");
-      const storedUserKey = localStorage.getItem("userKey");
+      const urlIdentifier = params.get("user");
+      const storedIdentifier = localStorage.getItem("identifier");
 
-      if (urlUserKey) {
-        setUserKey(urlUserKey);
-        localStorage.setItem("userKey", urlUserKey);
-      } else if (storedUserKey) {
-        setUserKey(storedUserKey);
+      if (urlIdentifier) {
+        setIdentifier(urlIdentifier);
+        localStorage.setItem("identifier", urlIdentifier);
+      } else if (storedIdentifier) {
+        setIdentifier(storedIdentifier);
         // Atualizar URL
-        window.history.replaceState({}, "", `?user=${encodeURIComponent(storedUserKey)}`);
+        window.history.replaceState({}, "", `?user=${encodeURIComponent(storedIdentifier)}`);
       }
     }
   }, []);
 
-  // Buscar tasks quando userKey muda
+  // Buscar tasks quando identifier muda
   const fetchTasks = useCallback(async () => {
-    if (!userKey) return;
+    if (!identifier) return;
 
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/tasks?user_key=${encodeURIComponent(userKey)}`);
+      const res = await fetch(`/api/tasks?identifier=${encodeURIComponent(identifier)}`);
       const data = await res.json();
       if (data.tasks) {
         setTasks(data.tasks);
@@ -51,7 +51,7 @@ export default function Home() {
       setIsLoading(false);
       setLastRefresh(new Date());
     }
-  }, [userKey]);
+  }, [identifier]);
 
   useEffect(() => {
     fetchTasks();
@@ -59,7 +59,7 @@ export default function Home() {
 
   // Polling para buscar atualizações (enriquecimento da IA)
   useEffect(() => {
-    if (!userKey) return;
+    if (!identifier) return;
 
     // Verificar se há tasks não enriquecidas
     const hasUnenrichedTasks = tasks.some(
@@ -70,24 +70,24 @@ export default function Home() {
       const interval = setInterval(fetchTasks, 5000); // Poll a cada 5 segundos
       return () => clearInterval(interval);
     }
-  }, [userKey, tasks, fetchTasks]);
+  }, [identifier, tasks, fetchTasks]);
 
   // Handlers
-  const handleUserKeySubmit = (key: string) => {
-    setUserKey(key);
-    localStorage.setItem("userKey", key);
+  const handleIdentifierSubmit = (key: string) => {
+    setIdentifier(key);
+    localStorage.setItem("identifier", key);
     window.history.replaceState({}, "", `?user=${encodeURIComponent(key)}`);
   };
 
   const handleAddTask = async (text: string) => {
-    if (!userKey) return;
+    if (!identifier) return;
 
     try {
       const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_key: userKey,
+          identifier: identifier,
           request_raw: text,
           source: "web",
         }),
@@ -103,11 +103,12 @@ export default function Home() {
   };
 
   const handleEditTask = async (id: string, newText: string) => {
+    if (!identifier) return;
     try {
       const res = await fetch(`/api/tasks/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ request_raw: newText }),
+        body: JSON.stringify({ request_raw: newText, identifier }),
       });
 
       const data = await res.json();
@@ -122,9 +123,12 @@ export default function Home() {
   };
 
   const handleToggleDone = async (id: string) => {
+    if (!identifier) return;
     try {
       const res = await fetch(`/api/tasks/${id}/done`, {
         method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier }),
       });
 
       const data = await res.json();
@@ -139,8 +143,13 @@ export default function Home() {
   };
 
   const handleDeleteTask = async (id: string) => {
+    if (!identifier) return;
     try {
-      await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+      await fetch(`/api/tasks/${id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier }),
+      });
       setTasks((prev) => prev.filter((t) => t.id !== id));
     } catch (err) {
       console.error("Failed to delete task:", err);
@@ -148,15 +157,15 @@ export default function Home() {
   };
 
   const handleLogout = () => {
-    setUserKey(null);
+    setIdentifier(null);
     setTasks([]);
-    localStorage.removeItem("userKey");
+    localStorage.removeItem("identifier");
     window.history.replaceState({}, "", window.location.pathname);
   };
 
-  // Se não há userKey, mostrar formulário de entrada
-  if (!userKey) {
-    return <UserKeyInput onSubmit={handleUserKeySubmit} />;
+  // Se não há identifier, mostrar formulário de entrada
+  if (!identifier) {
+    return <UserKeyInput onSubmit={handleIdentifierSubmit} />;
   }
 
   return (
@@ -194,7 +203,7 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-2">
               <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-              <p className="text-sm text-white/40">{userKey}</p>
+              <p className="text-sm text-white/40">{identifier}</p>
             </div>
           </motion.div>
 
@@ -261,7 +270,7 @@ export default function Home() {
       </main>
 
       {/* Chat Panel */}
-      <ChatPanel userKey={userKey} onTaskCreated={fetchTasks} />
+      <ChatPanel identifier={identifier} onTaskCreated={fetchTasks} />
     </div>
   );
 }

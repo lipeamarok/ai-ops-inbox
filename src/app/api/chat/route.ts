@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { resolveUserId } from "@/lib/user-utils";
 
 // Schema de validação para mensagem do chat
 const ChatSchema = z.object({
-  user_key: z.string().min(1, "user_key is required"),
+  identifier: z.string().min(1, "identifier is required"),
   message: z.string().min(1, "message is required"),
 });
 
@@ -19,6 +20,9 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    // Resolver usuário
+    const user = await resolveUserId(parsed.data.identifier);
 
     const n8nUrl = process.env.N8N_CHAT_WEBHOOK_URL;
 
@@ -38,9 +42,10 @@ export async function POST(req: Request) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        user_key: parsed.data.user_key,
+        user_id: user.id,
+        identifier: user.identifier,
         message: parsed.data.message,
-        app_base_url: process.env.APP_BASE_URL,
+        app_base_url: process.env.APP_BASE_URL || "https://ai-ops-inbox.vercel.app",
       }),
     });
 
