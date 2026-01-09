@@ -145,14 +145,41 @@ export default function Home() {
   const handleDeleteTask = async (id: string) => {
     if (!identifier) return;
     try {
-      await fetch(`/api/tasks/${id}`, {
+      await fetch(`/api/tasks/${id}?identifier=${encodeURIComponent(identifier)}`, {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier }),
       });
       setTasks((prev) => prev.filter((t) => t.id !== id));
     } catch (err) {
       console.error("Failed to delete task:", err);
+    }
+  };
+
+  const handleToggleStep = async (taskId: string, stepId: string) => {
+    if (!identifier) return;
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/steps/${stepId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier }),
+      });
+
+      const data = await res.json();
+      if (data.step) {
+        // Atualizar o step específico dentro da task
+        setTasks((prev) =>
+          prev.map((t) => {
+            if (t.id !== taskId) return t;
+            return {
+              ...t,
+              steps: t.steps?.map((s) =>
+                s.id === stepId ? { ...s, done: data.step.done } : s
+              ),
+            };
+          })
+        );
+      }
+    } catch (err) {
+      console.error("Failed to toggle step:", err);
     }
   };
 
@@ -254,6 +281,7 @@ export default function Home() {
             onEdit={handleEditTask}
             onToggleDone={handleToggleDone}
             onDelete={handleDeleteTask}
+            onToggleStep={handleToggleStep}
           />
         </motion.div>
 

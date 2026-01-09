@@ -22,14 +22,15 @@ function Test-Step {
         [string]$Name,
         [scriptblock]$Action
     )
-    
+
     Write-Host "[$Name] " -NoNewline -ForegroundColor Yellow
     try {
         $result = & $Action
         Write-Host "PASS" -ForegroundColor Green
         $script:passCount++
         return $result
-    } catch {
+    }
+    catch {
         Write-Host "FAIL - $($_.Exception.Message)" -ForegroundColor Red
         $script:failCount++
         return $null
@@ -52,9 +53,9 @@ $user = Test-Step "1. Resolve User" {
 # ============================================================
 $task1 = Test-Step "2. Create Task" {
     $body = @{
-        identifier = $identifier
+        identifier  = $identifier
         request_raw = "Agendar reuniao com o time de produto para discutir roadmap Q2"
-        source = "test-script"
+        source      = "test-script"
     } | ConvertTo-Json
     $resp = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/tasks" -ContentType "application/json" -Body $body
     if (-not $resp.task.id) { throw "Missing task.id" }
@@ -88,7 +89,7 @@ $taskDetail = Test-Step "4. Get Task by ID" {
 # ============================================================
 $updatedTask = Test-Step "5. Update Task" {
     $body = @{
-        identifier = $identifier
+        identifier  = $identifier
         request_raw = "Agendar reuniao URGENTE com o time de produto - Roadmap Q2"
     } | ConvertTo-Json
     $resp = Invoke-RestMethod -Method Put -Uri "$baseUrl/api/tasks/$($task1.id)" -ContentType "application/json" -Body $body
@@ -103,10 +104,10 @@ $updatedTask = Test-Step "5. Update Task" {
 $enrichedTask = Test-Step "6. Enrich Task (AI)" {
     $body = @{
         title_enhanced = "Reuniao Urgente: Roadmap Q2 com Time de Produto"
-        priority = "high"
-        tags = @("meeting", "product", "roadmap", "urgent")
-        next_action = "Enviar convite no calendario para o time"
-        steps = @(
+        priority       = "high"
+        tags           = @("meeting", "product", "roadmap", "urgent")
+        next_action    = "Enviar convite no calendario para o time"
+        steps          = @(
             "Verificar disponibilidade do time no calendario",
             "Reservar sala de reuniao ou criar link do Meet",
             "Preparar pauta com topicos do roadmap",
@@ -118,6 +119,29 @@ $enrichedTask = Test-Step "6. Enrich Task (AI)" {
     if (-not $resp.task.steps -or $resp.task.steps.Count -eq 0) { throw "Missing steps" }
     Write-Host " (steps: $($resp.task.steps.Count))" -NoNewline -ForegroundColor Gray
     return $resp.task
+}
+
+# ============================================================
+# 6b. TOGGLE STEP - Marcar step individual como concluído
+# ============================================================
+$stepId = $enrichedTask.steps[0].id
+Test-Step "6b. Toggle Step Done" {
+    $body = @{ identifier = $identifier } | ConvertTo-Json
+    $resp = Invoke-RestMethod -Method Patch -Uri "$baseUrl/api/tasks/$($task1.id)/steps/$stepId" -ContentType "application/json" -Body $body
+    if (-not $resp.step.id) { throw "Missing step.id" }
+    if ($resp.step.done -ne $true) { throw "Step should be done=true" }
+    Write-Host " (step done: $($resp.step.done))" -NoNewline -ForegroundColor Gray
+}
+
+# ============================================================
+# 6c. TOGGLE STEP UNDONE - Desmarcar step
+# ============================================================
+Test-Step "6c. Toggle Step Undone" {
+    $body = @{ identifier = $identifier } | ConvertTo-Json
+    $resp = Invoke-RestMethod -Method Patch -Uri "$baseUrl/api/tasks/$($task1.id)/steps/$stepId" -ContentType "application/json" -Body $body
+    if (-not $resp.step.id) { throw "Missing step.id" }
+    if ($resp.step.done -ne $false) { throw "Step should be done=false" }
+    Write-Host " (step done: $($resp.step.done))" -NoNewline -ForegroundColor Gray
 }
 
 # ============================================================
@@ -147,9 +171,9 @@ $undoneTask = Test-Step "8. Toggle Undone" {
 # ============================================================
 $task2 = Test-Step "9. Create Second Task" {
     $body = @{
-        identifier = $identifier
+        identifier  = $identifier
         request_raw = "Task temporaria para teste de delete"
-        source = "test-script"
+        source      = "test-script"
     } | ConvertTo-Json
     $resp = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/tasks" -ContentType "application/json" -Body $body
     if (-not $resp.task.id) { throw "Missing task.id" }
@@ -180,7 +204,7 @@ Test-Step "11. Verify Delete" {
 Test-Step "12. Chat Endpoint" {
     $body = @{
         identifier = $identifier
-        message = "list"
+        message    = "list"
     } | ConvertTo-Json
     $resp = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/chat" -ContentType "application/json" -Body $body
     # Chat pode retornar reply ou processar via n8n

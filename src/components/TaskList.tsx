@@ -10,9 +10,10 @@ interface TaskListProps {
   onEdit: (id: string, newText: string) => Promise<void>;
   onToggleDone: (id: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onToggleStep?: (taskId: string, stepId: string) => Promise<void>;
 }
 
-export function TaskList({ tasks, isLoading, onEdit, onToggleDone, onDelete }: TaskListProps) {
+export function TaskList({ tasks, isLoading, onEdit, onToggleDone, onDelete, onToggleStep }: TaskListProps) {
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
@@ -55,6 +56,7 @@ export function TaskList({ tasks, isLoading, onEdit, onToggleDone, onDelete }: T
                 onEdit={onEdit}
                 onToggleDone={onToggleDone}
                 onDelete={onDelete}
+                onToggleStep={onToggleStep}
               />
             ))}
           </div>
@@ -76,6 +78,7 @@ export function TaskList({ tasks, isLoading, onEdit, onToggleDone, onDelete }: T
                 onEdit={onEdit}
                 onToggleDone={onToggleDone}
                 onDelete={onDelete}
+                onToggleStep={onToggleStep}
               />
             ))}
           </div>

@@ -1,77 +1,79 @@
 # AI Ops Inbox
 
-> Transform messy requests into actionable tasks with AI-powered enhancement
+A full-stack, asynchronous task management system leveraging Generative AI for automatic context enrichment and structured data parsing.
 
-A modern task management application that uses AI to automatically enhance your tasks with better titles, priority levels, relevant tags, and step-by-step breakdowns.
-
-![AI Ops Inbox](https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=next.js)
+![Next.js](https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=next.js)
 ![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?style=flat-square&logo=supabase)
-![n8n](https://img.shields.io/badge/n8n-Automation-EA4B71?style=flat-square&logo=n8n)
+![n8n](https://img.shields.io/badge/n8n-Workflow_Automation-EA4B71?style=flat-square&logo=n8n)
+![OpenAI](https://img.shields.io/badge/OpenAI-GPT--5-412991?style=flat-square&logo=openai)
 
-## Features
+---
 
-- **AI-Enhanced Tasks**: When you add a task, AI automatically generates:
-  - Clear, actionable title
-  - Priority level (low/medium/high)
-  - Relevant tags
-  - Next action suggestion
-  - Step-by-step breakdown
+## Demo
 
-- **CRUD Operations**: Full task management
-  - Create tasks
-  - Edit tasks
-  - Mark as complete
-  - Delete tasks
+![Application Demo](https://via.placeholder.com/800x450.png?text=Insert+GIF+Demo+Here)
 
-- **Chatbot Interface**: Manage tasks via conversational commands
-  - `add: [task]` - Create a new task
-  - `list` - Show recent tasks
-  - `done: [task_id]` - Mark complete
+*Top: The task is created instantly via UI. Bottom: Background workers (n8n) enrich the data with priority, tags, and steps without blocking the user.*
 
-- **Persistent Storage**: All data stored in Supabase (PostgreSQL)
-
-- **Real-time Updates**: Polling for AI enrichment updates
+---
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         USER                                     │
-└─────────────────────┬───────────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    NEXT.JS (Vercel)                              │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │   UI ToDo   │  │  UI Chat    │  │      API Routes         │  │
-│  │   List      │  │  Bot        │  │  /api/tasks             │  │
-│  └─────────────┘  └─────────────┘  │  /api/tasks/[id]        │  │
-│                                     │  /api/tasks/[id]/done   │  │
-│                                     │  /api/tasks/[id]/enrich │  │
-│                                     │  /api/chat              │  │
-│                                     └───────────┬─────────────┘  │
-└─────────────────────────────────────────────────┼───────────────┘
-                      │                           │
-         ┌────────────┴────────────┐              │
-         ▼                         ▼              ▼
-┌─────────────────┐      ┌─────────────────┐    ┌─────────────────┐
-│   SUPABASE      │      │    n8n Cloud    │    │   OpenAI API    │
-│   (PostgreSQL)  │◄─────│   (Workflows)   │───►│   (GPT-5.1)     │
-│   - tasks       │      │   - Enrichment  │    └─────────────────┘
-│   - task_steps  │      │   - Chat Bot    │
-└─────────────────┘      └─────────────────┘
+The system utilizes a decoupled architecture to ensure UI responsiveness. The frontend handles immediate CRUD operations, while heavy AI processing is offloaded to asynchronous n8n workflows.
+
+```mermaid
+graph TD
+    User[User Interaction] -->|HTTP POST| NextJS[Next.js API Routes]
+    NextJS -->|Write| DB[(Supabase PostgreSQL)]
+    NextJS -->|Async Trigger| N8N[n8n Workflow Engine]
+    N8N -->|Analyze Context| AI[OpenAI GPT Model]
+    AI -->|Structured JSON| N8N
+    N8N -->|Enrich Data| DB
 ```
 
-## Quick Start
+(Note: If Mermaid charts are not supported in your viewer, refer to the ASCII diagram below)
+
+```text
+┌─────────────────┐       ┌──────────────────┐       ┌─────────────────┐
+│  Next.js (Web)  │──────►│    n8n Cloud     │──────►│   OpenAI API    │
+│  - UI & API     │       │   (Orchestrator) │       │   (Reasoning)   │
+└────────┬────────┘       └─────────┬────────┘       └─────────────────┘
+         │                          │
+         ▼                          ▼
+┌──────────────────────────────────────────────────┐
+│              SUPABASE (PostgreSQL)               │
+│  Tables: tasks, task_steps, users                │
+└──────────────────────────────────────────────────┘
+```
+
+## Key Features
+
+* **Asynchronous AI Enrichment:** Non-blocking processing of raw inputs into structured metadata (Title, Priority, Tags).
+* **Step-by-Step Generation:** Automatically breaks down vague requests into 3-7 actionable steps using Chain-of-Thought prompting.
+* **Relational Data Integrity:** Enforces strict JSON schemas in LLM outputs to map correctly to PostgreSQL relational tables.
+* **Chat Interface:** Natural language command processing (`add:`, `list`, `done:`) via a dedicated n8n router workflow.
+* **Full CRUD API:** RESTful endpoints handling complex state changes and data persistence.
+
+## Project Structure
+
+```bash
+├── src/app/api/       # Next.js API Routes (Backend logic)
+├── src/components/    # React Server/Client Components
+├── src/lib/           # Supabase client & utilities
+├── workflows/         # Exported n8n workflow JSONs
+└── database/          # SQL schema and migration files
+```
+
+## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+
-- Supabase account
-- n8n cloud account
-- OpenAI API key
+* Node.js 18+
+* Supabase Project
+* n8n Instance (Cloud or Self-hosted)
+* OpenAI API Key
 
-### 1. Clone & Install
+### 1. Installation
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/ai-ops-inbox.git
@@ -79,44 +81,28 @@ cd ai-ops-inbox
 npm install
 ```
 
-### 2. Setup Supabase
+### 2. Environment Configuration
 
-1. Create a new project at [supabase.com](https://supabase.com)
-2. Run the SQL schema (see below)
-3. Copy your project URL and anon key
-
-### 3. Configure Environment
-
-Copy `.env.example` to `.env.local` and fill in your credentials:
+Rename `.env.example` to `.env.local` and populate the variables:
 
 ```bash
-cp .env.example .env.local
+NEXT_PUBLIC_SUPABASE_URL=your_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+N8N_TASK_WEBHOOK_URL=your_enrichment_webhook
+N8N_CHAT_WEBHOOK_URL=your_chat_webhook
+APP_BASE_URL=http://localhost:3000
 ```
 
-Required variables:
-- `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Your Supabase anon key
-- `N8N_TASK_WEBHOOK_URL` - n8n webhook for task enrichment
-- `N8N_CHAT_WEBHOOK_URL` - n8n webhook for chatbot
-- `APP_BASE_URL` - Your app URL (localhost or Vercel)
+### 3. Database Setup
 
-### 4. Run Development Server
+Execute the schema script located in `database/schema.sql` (or copy from below) in your Supabase SQL Editor to create tables (`tasks`, `task_steps`) and triggers.
 
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000)
-
-## Database Schema
-
-Run this SQL in your Supabase SQL Editor:
+<details>
+<summary>Click to view SQL Schema</summary>
 
 ```sql
--- Enable UUID extension
 create extension if not exists "pgcrypto";
 
--- Tasks table
 create table if not exists public.tasks (
   id uuid primary key default gen_random_uuid(),
   user_key text not null,
@@ -131,7 +117,6 @@ create table if not exists public.tasks (
   updated_at timestamptz not null default now()
 );
 
--- Task steps table
 create table if not exists public.task_steps (
   id uuid primary key default gen_random_uuid(),
   task_id uuid not null references public.tasks(id) on delete cascade,
@@ -140,134 +125,34 @@ create table if not exists public.task_steps (
   done boolean not null default false,
   created_at timestamptz not null default now()
 );
-
--- Indexes
-create index if not exists idx_tasks_user_key on public.tasks(user_key);
-create index if not exists idx_steps_task_id on public.task_steps(task_id);
-
--- Auto-update timestamp trigger
-create or replace function public.set_updated_at()
-returns trigger as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$ language plpgsql;
-
-drop trigger if exists trg_tasks_updated_at on public.tasks;
-create trigger trg_tasks_updated_at
-before update on public.tasks
-for each row execute function public.set_updated_at();
 ```
 
-**Important:** Disable RLS for testing (Table Editor → tasks → RLS: OFF)
+</details>
 
-## n8n Workflows
+### 4. Running the Application
 
-### Workflow A: Task Enrichment
-
-**Trigger:** Webhook `POST /webhook/task-created`
-
-**Flow:**
-1. Receive task data (task_id, request_raw, app_base_url)
-2. Call OpenAI to generate enhanced task data
-3. POST result to `/api/tasks/{task_id}/enrichment`
-
-**OpenAI Prompt:**
-```
-You are an assistant that converts raw task requests into actionable tasks.
-Return ONLY valid JSON with:
-- title_enhanced: clear, actionable title
-- priority: low, medium, or high
-- tags: 2-6 relevant tags
-- next_action: immediate next step
-- steps: 3-7 actionable steps
+```bash
+npm run dev
 ```
 
-### Workflow B: Chatbot
+Access the dashboard at `http://localhost:3000`.
 
-**Trigger:** Webhook `POST /webhook/chat`
+## API Documentation
 
-**Flow:**
-1. Receive message and user_key
-2. Parse command (add:/list/done:)
-3. Call appropriate API endpoint
-4. Return response
+| Method | Endpoint | Query Params | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/tasks` | - | Create a raw task (Triggers AI) |
+| `GET` | `/api/tasks` | `identifier` | List tasks filtered by user |
+| `PATCH` | `/api/tasks/[id]/done` | `identifier` | Mark task as complete |
+| `POST` | `/api/tasks/[id]/enrichment` | - | Webhook receiver for n8n AI updates |
 
-## 📁 Project Structure
+## Automation Logic (n8n)
 
-```
-ai-ops-inbox/
-├── src/
-│   ├── app/
-│   │   ├── api/
-│   │   │   ├── tasks/
-│   │   │   │   ├── route.ts          # GET/POST tasks
-│   │   │   │   └── [id]/
-│   │   │   │       ├── route.ts      # GET/PUT/DELETE task
-│   │   │   │       ├── done/
-│   │   │   │       │   └── route.ts  # PATCH mark done
-│   │   │   │       └── enrichment/
-│   │   │   │           └── route.ts  # POST enrichment
-│   │   │   └── chat/
-│   │   │       └── route.ts          # POST chat message
-│   │   ├── layout.tsx
-│   │   ├── page.tsx                  # Main app page
-│   │   └── globals.css
-│   ├── components/
-│   │   ├── AddTaskForm.tsx
-│   │   ├── ChatPanel.tsx
-│   │   ├── TaskItem.tsx
-│   │   ├── TaskList.tsx
-│   │   └── UserKeyInput.tsx
-│   ├── lib/
-│   │   └── supabase.ts
-│   └── types/
-│       └── index.ts
-├── .env.example
-├── .env.local
-├── package.json
-└── README.md
-```
+The system relies on two primary workflows:
 
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/tasks?user_key=...` | List user's tasks |
-| `POST` | `/api/tasks` | Create new task |
-| `GET` | `/api/tasks/:id` | Get single task |
-| `PUT` | `/api/tasks/:id` | Update task |
-| `DELETE` | `/api/tasks/:id` | Delete task |
-| `PATCH` | `/api/tasks/:id/done` | Mark task complete |
-| `POST` | `/api/tasks/:id/enrichment` | Receive AI enrichment |
-| `POST` | `/api/chat` | Send chat command |
-
-## Deployment
-
-### Deploy to Vercel
-
-1. Push to GitHub
-2. Import project in Vercel
-3. Add environment variables
-4. Deploy!
-
-After first deploy, update `APP_BASE_URL` with your Vercel URL.
-
-## Tech Stack
-
-- **Frontend:** Next.js 15, React, Tailwind CSS
-- **Backend:** Next.js API Routes
-- **Database:** Supabase (PostgreSQL)
-- **Automation:** n8n
-- **AI:** OpenAI GPT-4o-mini
-- **Hosting:** Vercel
-
-## License
-
-MIT
+1. **Enrichment Engine:** Listens for `task-created`, prompts GPT-5.1 for structure, and performs a `POST` callback to update the database.
+2. **Conversational Bot:** A router that parses natural language inputs via regex and directs traffic to the appropriate API endpoints (Create, List, Delete).
 
 ---
 
-Built with ❤️
-by @lipeamarok
+**Author:** [@lipeamarok](https://lipeamarok.dev)

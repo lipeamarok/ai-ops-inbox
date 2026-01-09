@@ -11,12 +11,14 @@ interface TaskItemProps {
   onEdit: (id: string, newText: string) => Promise<void>;
   onToggleDone: (id: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onToggleStep?: (taskId: string, stepId: string) => Promise<void>;
 }
 
-export function TaskItem({ task, onEdit, onToggleDone, onDelete }: TaskItemProps) {
+export function TaskItem({ task, onEdit, onToggleDone, onDelete, onToggleStep }: TaskItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(task.request_raw);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingStepId, setLoadingStepId] = useState<string | null>(null);
 
   const handleSaveEdit = async () => {
     if (!editText.trim()) return;
@@ -176,22 +178,53 @@ export function TaskItem({ task, onEdit, onToggleDone, onDelete }: TaskItemProps
                 <div className="mt-4 space-y-2">
                   <p className="text-sm font-semibold text-white/60 flex items-center gap-2">
                     <ListChecks className="w-4 h-4" />
-                    Steps
+                    Steps ({task.steps.filter(s => s.done).length}/{task.steps.length})
                   </p>
                   <ul className="space-y-1.5 pl-1">
-                    {task.steps.map((step: TaskStep, idx: number) => (
-                      <li
-                        key={step.id || idx}
-                        className="text-sm text-white/70 flex items-start gap-3 p-2 rounded-lg hover:bg-white/[0.03] transition-colors"
-                      >
-                        <span className="w-5 h-5 flex items-center justify-center bg-white/[0.05] text-white/50 rounded-md text-xs font-medium border border-white/[0.1]">
-                          {idx + 1}
-                        </span>
-                        <span className={step.done ? "line-through text-white/30" : ""}>
-                          {step.step_text}
-                        </span>
-                      </li>
-                    ))}
+                    {task.steps.map((step: TaskStep, idx: number) => {
+                      const isStepLoading = loadingStepId === step.id;
+                      return (
+                        <li
+                          key={step.id || idx}
+                          className={clsx(
+                            "text-sm text-white/70 flex items-start gap-3 p-2 rounded-lg transition-all",
+                            onToggleStep && !isDone ? "cursor-pointer hover:bg-white/[0.05]" : "hover:bg-white/[0.03]",
+                            isStepLoading && "opacity-50"
+                          )}
+                          onClick={async () => {
+                            if (!onToggleStep || isDone || isStepLoading) return;
+                            setLoadingStepId(step.id);
+                            await onToggleStep(task.id, step.id);
+                            setLoadingStepId(null);
+                          }}
+                        >
+                          {/* Step checkbox */}
+                          <span
+                            className={clsx(
+                              "w-5 h-5 flex items-center justify-center rounded-md text-xs font-medium border transition-all",
+                              step.done
+                                ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400"
+                                : "bg-white/[0.05] border-white/[0.1] text-white/50",
+                              onToggleStep && !isDone && "hover:border-emerald-400"
+                            )}
+                          >
+                            {isStepLoading ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : step.done ? (
+                              <Check className="w-3 h-3" />
+                            ) : (
+                              idx + 1
+                            )}
+                          </span>
+                          <span className={clsx(
+                            "flex-1",
+                            step.done && "line-through text-white/30"
+                          )}>
+                            {step.step_text}
+                          </span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
