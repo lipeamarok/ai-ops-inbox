@@ -1,0 +1,252 @@
+{
+  "name": "Task Enrichment",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "task-created",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "02c00e29-cc2b-4f29-8b31-ce337c113fae",
+      "name": "Webhook",
+      "webhookId": "c962afc5-1821-4824-8b1e-5431bc1bbedc"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.1",
+          "mode": "list",
+          "cachedResultName": "GPT-5.1"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a task management assistant.\nAnalyze the request: \"{{ $json.request_raw }}\"\n\nReturn ONLY a valid JSON object. Do not include markdown formatting like ```json.\nStrict Output Structure:\n{\n  \"title_enhanced\": \"A professional and concise title (max 60 chars)\",\n  \"priority\": \"low|medium|high\",\n  \"tags\": [\"tag1\", \"tag2\", \"tag3\"],\n  \"next_action\": \"The immediate next physical action\",\n  \"steps\": [\n     \"Step 1 instruction\",\n     \"Step 2 instruction\",\n     \"Step 3 instruction\"\n  ]\n}"
+            },
+            {
+              "content": "=Raw request: \"{{ $json.body.request_raw }}\"\n\nCreate a structured task following these strict rules:\n- title_enhanced: clear, actionable title (max 60 chars)\n- priority: \"low\", \"medium\", or \"high\"\n- tags: Array of 2-4 strings (lowercase, single words). Example: [\"marketing\", \"urgent\"]\n- next_action: One sentence describing the immediate next step\n- steps: A flat array of 3-5 strings. Do NOT use objects or numbering. Example: [\"Step 1 content\", \"Step 2 content\"]\n\nReturn ONLY valid JSON in this exact shape:\n{\n  \"title_enhanced\": \"string\",\n  \"priority\": \"low|medium|high\",\n  \"tags\": [\"string\", \"string\"],\n  \"next_action\": \"string\",\n  \"steps\": [\n    \"string\",\n    \"string\",\n    \"string\"\n  ]\n}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "0d05bb17-a27b-4f5a-b8f1-50cbbb6d0986",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "JDM1dEam2vCtrPPz",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$json.app_base_url}}/api/tasks/{{$json.task_id}}/enrichment",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "title_enhanced",
+              "value": "={{$json.title_enhanced}}"
+            },
+            {
+              "name": "priority",
+              "value": "={{$json.priority}}"
+            },
+            {
+              "name": "tags",
+              "value": "={{$json.tags}}"
+            },
+            {
+              "name": "next_action",
+              "value": "={{$json.next_action}}"
+            },
+            {
+              "name": "steps",
+              "value": "={{$json.steps}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        800,
+        0
+      ],
+      "id": "4ee3b581-eac2-46c9-9596-5e441f7face9",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Payload recebido do Webhook\nconst webhook = $items(\"Webhook\")[0].json;\n\n// Resposta do LLM\nconst model = $items(\"Message a model\")[0].json;\n\n// Extrai texto do LLM\nconst raw =\n  model.output?.[0]?.content?.[0]?.text ??\n  model.text ??\n  \"{}\";\n\n// Extrai JSON do texto\nconst match = raw.match(/\\{[\\s\\S]*\\}/);\nconst jsonStr = match ? match[0] : \"{}\";\n\nlet enrichment = {};\ntry {\n  enrichment = JSON.parse(jsonStr);\n} catch {\n  enrichment = {};\n}\n\n// Retorna payload final\nreturn [\n  {\n    task_id: webhook.body?.task_id ?? webhook.task_id,\n    app_base_url: webhook.body?.app_base_url ?? webhook.app_base_url,\n    request_raw: webhook.body?.request_raw ?? webhook.request_raw,\n    user_key: webhook.body?.user_key ?? webhook.user_key,\n    source: webhook.body?.source ?? webhook.source ?? \"web\",\n    ...enrichment,\n  },\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        0
+      ],
+      "id": "da947c8d-bee5-4076-9f95-f295274adfdb",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ffa1474f-f2ce-4254-aa0b-64ec8f4423bc",
+              "leftValue": "={{ $json.task.source }}",
+              "rightValue": "whatsapp",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1008,
+        0
+      ],
+      "id": "2afc1ee6-5414-4b0e-bfdf-26a9fd5da451",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://nondisposed-jefferey-palaeoentomological.ngrok-free.dev/message/sendText/n8n-desafio",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "secreta123"
+            },
+            {
+              "name": "ngrok-skip-browser-warning",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\nJSON.stringify({\n  \"number\": $json.task.user_key,\n  \"textMessage\": {\n    \"text\": \"*ANALYSIS COMPLETE*\\n\\n\" +\n            \"*Title:* \" + ($json.task.title_enhanced || \"Task Processed\") + \"\\n\" +\n            \"*Priority:* \" + ($json.task.priority ? $json.task.priority.toUpperCase() : \"NORMAL\") + \"\\n\\n\" +\n            \"*Next Steps:*\\n\" + \n            (Array.isArray($json.task.steps) ? $json.task.steps.map(s => \"- \" + (s.step_text || s.step || s)).join('\\n') : ($json.task.next_action || \"See details in app.\"))\n  }\n})\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1216,
+        -96
+      ],
+      "id": "daa27fd4-ebed-4f9d-8690-aad992e8f779",
+      "name": "HTTP Request1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "c15d3478-af09-4b1e-9f16-7e1fe60e8f7c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7ffb254a8ad9fc8cd240d71322efff96751103ad0a1fece4cbb4a159d2b47e54"
+  },
+  "id": "xbE6I_LYRZ8EQ5LuMevVx",
+  "tags": [
+    {
+      "updatedAt": "2026-01-08T16:08:28.926Z",
+      "createdAt": "2026-01-08T16:08:28.926Z",
+      "id": "fBzOpG9AwUO0RIQ7",
+      "name": "Task Enrichment"
+    }
+  ]
+}

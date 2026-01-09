@@ -1,0 +1,833 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chat-bot",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -320,
+        0
+      ],
+      "id": "179175d4-5b05-4217-8eb3-03697e8fb35e",
+      "name": "Webhook",
+      "webhookId": "48fd4627-cb2f-43ac-950f-66e80442d7a7"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.1",
+          "mode": "list",
+          "cachedResultName": "GPT-5.1"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a strict JSON command parser for a TODO app. Return ONLY valid JSON. No markdown. No extra text.\n"
+            },
+            {
+              "content": "=Input:\n- user_key: \"{{ $json.user_key }}\"\n- message: \"{{ $json.message }}\"\n- app_base_url: \"{{ $json.app_base_url }}\"\n\nReturn ONLY valid JSON in one of the formats below.\n\nAllowed actions:\n\n1) CREATE_TASK\n{\n  \"type\": \"CREATE_TASK\",\n  \"payload\": {\n    \"user_key\": \"string\",\n    \"request_raw\": \"string\",\n    \"source\": \"web\"\n  }\n}\n\n2) LIST_TASKS\n{\n  \"type\": \"LIST_TASKS\",\n  \"payload\": {\n    \"user_key\": \"string\"\n  }\n}\n\n3) GET_TASK\n{\n  \"type\": \"GET_TASK\",\n  \"payload\": {\n    \"id\": \"uuid\"\n  }\n}\n\n4) MARK_DONE\n{\n  \"type\": \"MARK_DONE\",\n  \"payload\": {\n    \"id\": \"uuid\"\n  }\n}\n\n5) DELETE_TASK\n{\n  \"type\": \"DELETE_TASK\",\n  \"payload\": {\n    \"id\": \"uuid\"\n  }\n}\n\nRules:\n- If the user says \"list\", \"show my tasks\", return LIST_TASKS.\n- If user says \"done <uuid>\" or \"complete <uuid>\", return MARK_DONE.\n- If user says \"delete <uuid>\", return DELETE_TASK.\n- If user provides a UUID alone, return GET_TASK.\n- Otherwise, treat it as CREATE_TASK using the full message as request_raw.\n\nReturn JSON only.\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        256,
+        0
+      ],
+      "id": "ed9c3a19-a2a8-480a-b691-d252c21c7602",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "JDM1dEam2vCtrPPz",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- BLOCO 1: DESCOBERTA DA ORIGEM (NOVO) ---\n// Aqui resolvemos o erro \"Node Webhook not executed\".\n// Tentamos pegar dados do WhatsApp primeiro, se falhar, pegamos do Webhook.\n\nlet originData = {};\nlet originSource = 'web'; // Default\n\ntry {\n  // Tenta ler do nó do WhatsApp (Edit Fields)\n  // O .first() previne erro se o array for vazio\n  const waItem = $items(\"Edit Fields\")[0].json;\n  if (waItem && waItem.user_key) {\n    originData = waItem;\n    originSource = waItem.source || 'whatsapp';\n  } else {\n    throw new Error('Not found');\n  }\n} catch (e) {\n  // Se falhar (caiu aqui porque veio do fluxo WEB)\n  try {\n    const webItem = $items(\"Webhook\")[0].json.body;\n    originData = webItem || {};\n    originSource = originData.source || 'web';\n  } catch (err) {\n    // Se der erro aqui, é porque algo muito estranho aconteceu, mas seguimos vazios\n    originData = {};\n  }\n}\n\n// --- BLOCO 2: PREPARAÇÃO DE VARIÁVEIS (ADAPTADO) ---\n// Usamos o 'originData' que descobrimos acima, em vez de chumbar 'webhookData'\n\n// Recupera resposta do LLM (Input atual do nó)\nconst llmResponse = $input.first()?.json?.content || $input.first()?.json?.message?.content || \"\"; \n\nconst user_key = String(originData.user_key || originData.identifier || \"\").trim();\n// No zap chamamos de 'message', na web pode ser 'message' ou 'request_raw'\nconst rawMessage = String(originData.message || originData.request_raw || \"\").trim(); \nlet app_base_url = String(originData.app_base_url || \"\").trim().replace(/\\/+$/, \"\");\n\nlet actionData = {};\n\n// --- BLOCO 3: SUA LÓGICA ORIGINAL (MANTIDA INTACTA) ---\n// A única alteração aqui foi trocar a string fixa \"web\" pela variável 'originSource'\n\n// TENTATIVA 1: Usar a inteligência do GPT (Prioridade)\ntry {\n  // O GPT pode retornar o JSON dentro de blocos de código ```json ... ```, removemos se houver\n  const cleanJson = llmResponse.replace(/```json|```/g, '').trim();\n  actionData = JSON.parse(cleanJson);\n   \n  // Garante que o payload tenha os dados necessários que podem não vir do GPT\n  if (!actionData.payload) actionData.payload = {};\n  actionData.payload.user_key = user_key;\n  actionData.payload.request_raw = rawMessage;\n  actionData.payload.source = originSource; // <--- Dinâmico agora!\n\n} catch (e) {\n  // TENTATIVA 2: Fallback Manual (Se o GPT falhar ou devolver lixo)\n  let type = \"CREATE_TASK\"; \n  let taskId = null;\n\n  // Regex simples para capturar UUID se houver\n  const uuidMatch = rawMessage.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);\n  if (uuidMatch) taskId = uuidMatch[0];\n\n  // Regex keywords (Mantidas suas regras)\n  if (/\\b(list|listar|show|mostrar|quais|ver|tarefas)\\b/i.test(rawMessage)) type = \"LIST_TASKS\";\n  else if (/\\b(mark|done|concluir|check)\\b/i.test(rawMessage)) type = \"MARK_DONE\";\n  else if (/\\b(delete|del|remover|apagar)\\b/i.test(rawMessage)) type = \"DELETE_TASK\";\n  else if (taskId && !/\\b(delete|mark|done)/i.test(rawMessage)) type = \"GET_TASK\";\n\n  actionData = {\n    type: type,\n    payload: {\n      user_key,\n      request_raw: rawMessage,\n      source: originSource, // <--- Dinâmico agora!\n      id: taskId\n    }\n  };\n}\n\n// Retorno final\nreturn [\n  {\n    json: {\n      app_base_url,\n      user_key,\n      message: rawMessage,\n      action: actionData // O Switch vai ler action.type\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        0
+      ],
+      "id": "985ec9e5-0e4b-4dd2-a688-d03b454ff945",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 5,
+        "output": "={{ ({ \n  \"CREATE_TASK\": 0,\n  \"LIST_TASKS\": 1,\n  \"GET_TASK\": 2,\n  \"MARK_DONE\": 3,\n  \"DELETE_TASK\": 4\n})[$json.action.type] ?? 0 }}\n"
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        800,
+        -48
+      ],
+      "id": "e7d5911a-f648-4d22-846e-ddf6b26ed0fa",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ai-ops-inbox.vercel.app/api/tasks",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\nJSON.stringify({\n  \"identifier\": $json.user_key,\n  \"request_raw\": $json.message, \n  \"source\": $json.action.payload.source \n})\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1008,
+        -288
+      ],
+      "id": "2892f153-f2f9-4bce-9aec-8dccff7bd80b",
+      "name": "HTTP CREATE_TASK"
+    },
+    {
+      "parameters": {
+        "url": "https://ai-ops-inbox.vercel.app/api/tasks",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "identifier",
+              "value": "={{ $json.user_key }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1008,
+        -144
+      ],
+      "id": "6dd7693f-e54b-44ae-8f46-8d7cc73a7268",
+      "name": "HTTP LIST_TASKS"
+    },
+    {
+      "parameters": {
+        "url": "=https://ai-ops-inbox.vercel.app/api/tasks/{{$json.action.payload.id}}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "identifier",
+              "value": "={{ $json.user_key }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1008,
+        0
+      ],
+      "id": "5b56779b-04b9-4a6d-815c-f435b635b21d",
+      "name": "HTTP GET_TASK"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://ai-ops-inbox.vercel.app/api/tasks/{{ $json.action.payload.id }}/done",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\nJSON.stringify({\n  \"identifier\": $json.user_key\n})\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1008,
+        144
+      ],
+      "id": "cb9d7ca8-4d85-4f53-8f6a-72c3f4e9c0b2",
+      "name": "HTTP MARK_DONE"
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://ai-ops-inbox.vercel.app/api/tasks/{{ $json.action.payload.id }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "identifier",
+              "value": "={{ $json.user_key }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1008,
+        288
+      ],
+      "id": "3b52514e-c646-4e95-abb0-cadcd60527e9",
+      "name": "HTTP DELETE_TASK"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7f753442-8a1f-40c9-9155-f76139556030",
+              "name": "=reply",
+              "value": "={{ \n\"Task created successfully!\\nID: \" + $json.id + \"\\n\\nSystem is analyzing and categorizing your task...\" \n}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1440,
+        -288
+      ],
+      "id": "a15620fc-6e95-442c-96af-4263eaaade60",
+      "name": "SET CREATE_TASK"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f76c5d80-21f3-45ab-8be1-a926563712bd",
+              "name": "=reply",
+              "value": "={{ $json.tasks && $json.tasks.length > 0 ? \"Aqui estão suas tarefas:\\n\\n\" + $json.tasks.map(t => `- [${t.status}] ${t.title_enhanced || t.request_raw}`).join('\\n') : \"Você não tem tarefas pendentes.\" }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1440,
+        -144
+      ],
+      "id": "f5f66071-a1b0-4484-bbb9-fcc23c4bb8b8",
+      "name": "SET LIST_TASK"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5f8e538f-5f8b-4b52-bb06-522eb878de8f",
+              "name": "=reply",
+              "value": "={{ \n(() => {\n  // Define quem é a task (se veio direto ou dentro de .task)\n  const t = $json.id ? $json : ($json.task || {});\n  \n  return \"Tarefa Encontrada:\\n\" +\n         \"ID: \" + (t.id || 'N/A') + \"\\n\" +\n         \"Título: \" + (t.title_enhanced || t.request_raw || 'Sem título') + \"\\n\" +\n         \"Status: \" + (t.status || 'open');\n})() \n}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1232,
+        0
+      ],
+      "id": "f832350a-2f38-49ab-8f8a-4c65b4f649b2",
+      "name": "SET GET_TASK"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "626be56e-5ef6-4c8d-919c-6f838d9bbcef",
+              "name": "reply",
+              "value": "\"Tarefa concluída com sucesso!\"",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1232,
+        144
+      ],
+      "id": "d86177b9-3601-4874-90b5-04c322f663d6",
+      "name": "SET MARK_DONE"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "80e6b8bb-c73e-4565-9796-d2f3014c710b",
+              "name": "=reply",
+              "value": "\"Tarefa removida permanentemente.\"",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1232,
+        288
+      ],
+      "id": "597810da-392d-453f-b1ec-3c50e59d1615",
+      "name": "SET DELETE_TASK"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1888,
+        -272
+      ],
+      "id": "2dba0b75-2010-4c90-bc43-38deeff7ae12",
+      "name": "Respond to Webhook-Create"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1648,
+        -144
+      ],
+      "id": "2b7dbf4e-402a-4090-9927-8415baa7d58c",
+      "name": "Respond to Webhook-List"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1440,
+        0
+      ],
+      "id": "71506dd1-9280-4632-89e9-ce731171fa8d",
+      "name": "Respond to Webhook-Get"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1440,
+        144
+      ],
+      "id": "237a41e4-3ffd-4aaf-9952-45f251b63e8c",
+      "name": "Respond to Webhook-Mark"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1440,
+        288
+      ],
+      "id": "933c5240-0b25-4861-b8be-9c4eccb76e89",
+      "name": "Respond to Webhook-Delete"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lipeamarok.app.n8n.cloud/webhook/task-created",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\nJSON.stringify({\n  // Mantemos a sua lógica (está correta)\n  \"task_id\": $items(\"HTTP CREATE_TASK\")[0].json.id,\n  \"app_base_url\": $('Code in JavaScript').first().json.app_base_url,\n  \"user_key\": $json.user_key,\n  \"request_raw\": $json.request_raw,\n  \n  // ADIÇÃO OBRIGATÓRIA:\n  // Precisamos dizer pro próximo Workflow se isso é \"whatsapp\" ou \"web\"\n  \"source\": $('Code in JavaScript').first().json.source\n})\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1216,
+        -288
+      ],
+      "id": "5c127f70-94fb-4ecb-b85f-5b521c640fec",
+      "name": "Trigger Enrichment"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-message",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -320,
+        -320
+      ],
+      "id": "5cf53a4d-638c-499e-8733-6346be7864c3",
+      "name": "Webhook WhatsApp",
+      "webhookId": "0a4a8a16-f6cc-4a44-9553-c19e68533751"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ee723ad8-8116-498b-b6ea-73e6f5e6945c",
+              "leftValue": "={{ $json.body.data.message.conversation || $json.body.data.message.extendedTextMessage.text }}",
+              "rightValue": "=#to-do list",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -96,
+        -320
+      ],
+      "id": "9bd519c6-2019-4a0e-b409-ed7c0ae2c629",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c51fce86-05fb-49b6-a233-d6b3a5f6bd8b",
+              "name": "user_key",
+              "value": "={{ $json.body.data.key.remoteJid.replace('@s.whatsapp.net', '') }}",
+              "type": "string"
+            },
+            {
+              "id": "498f37b8-e876-4c6b-99aa-47c6a7f398c0",
+              "name": "message",
+              "value": "={{ ( $json.body.data.message.conversation || $json.body.data.message.extendedTextMessage.text || '' ).replace('#to-do list', '').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "250984bc-787f-47f3-ac07-56f3d75d0758",
+              "name": "source",
+              "value": "=whatsapp",
+              "type": "string"
+            },
+            {
+              "id": "0b0551fc-daa2-44ad-9edd-08d9c94fcbe1",
+              "name": "app_base_url",
+              "value": "=https://ai-ops-inbox.vercel.app",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        144,
+        -336
+      ],
+      "id": "13fbc4ec-83da-4857-8d23-e3a628b17cc8",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 2,
+        "output": "={{ $node[\"Code in JavaScript\"].json.action.payload.source === 'whatsapp' ? 0 : 1 }}"
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1648,
+        -288
+      ],
+      "id": "9ab1d73e-c0c9-46e4-a733-f4ef23731dd2",
+      "name": "Response Router"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://nondisposed-jefferey-palaeoentomological.ngrok-free.dev/message/sendText/n8n-desafio",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "secreta123"
+            },
+            {
+              "name": "ngrok-skip-browser-warning\t",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\nJSON.stringify({\n  \"number\": $('Code in JavaScript').first().json.user_key,\n  \"textMessage\": {\n    // Aqui buscamos o ID no nó original CREATE_TASK para garantir que não venha \"Pending\"\n    \"text\": \"Task created successfully. ID: \" + $items(\"HTTP CREATE_TASK\")[0].json.id + \". The AI is analyzing the context now.\"\n  }\n})\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1888,
+        -480
+      ],
+      "id": "4a81f644-53a5-428f-9dff-671dda321259",
+      "name": "WhatsApp Sender"
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "lipeamarok.app.n8n.cloud",
+            "user-agent": "Mozilla/5.0 (Windows NT; Windows NT 10.0; pt-BR) WindowsPowerShell/5.1.26100.7462",
+            "content-length": "94",
+            "accept-encoding": "gzip, br",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "2804:984:947:ad00:dcee:b8c5:63fb:fc10",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "BR",
+            "cf-ray": "9bafb29f64e5941a-UDI",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json",
+            "x-forwarded-for": "2804:984:947:ad00:dcee:b8c5:63fb:fc10, 172.71.2.167",
+            "x-forwarded-host": "lipeamarok.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-102-67995f758b-pptkp",
+            "x-is-trusted": "yes",
+            "x-real-ip": "2804:984:947:ad00:dcee:b8c5:63fb:fc10"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "message": "ver tarefa 9cd1e81a-ffa8-4bc4-b526-241f74c8ae41",
+            "user_key": "lipe"
+          },
+          "webhookUrl": "https://lipeamarok.app.n8n.cloud/webhook/chat-bot",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "HTTP CREATE_TASK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP LIST_TASKS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP GET_TASK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP MARK_DONE",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP DELETE_TASK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP CREATE_TASK": {
+      "main": [
+        [
+          {
+            "node": "Trigger Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP LIST_TASKS": {
+      "main": [
+        [
+          {
+            "node": "SET LIST_TASK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP GET_TASK": {
+      "main": [
+        [
+          {
+            "node": "SET GET_TASK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP MARK_DONE": {
+      "main": [
+        [
+          {
+            "node": "SET MARK_DONE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP DELETE_TASK": {
+      "main": [
+        [
+          {
+            "node": "SET DELETE_TASK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SET CREATE_TASK": {
+      "main": [
+        [
+          {
+            "node": "Response Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SET LIST_TASK": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook-List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SET GET_TASK": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook-Get",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SET MARK_DONE": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook-Mark",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SET DELETE_TASK": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook-Delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Enrichment": {
+      "main": [
+        [
+          {
+            "node": "SET CREATE_TASK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Response Router": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp Sender",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook-Create",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "04dac50a-88ae-4733-952a-2da25dfcde31",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7ffb254a8ad9fc8cd240d71322efff96751103ad0a1fece4cbb4a159d2b47e54"
+  },
+  "id": "tDKLsD-DjCqpFvFxCDK-7",
+  "tags": [
+    {
+      "name": "ChatBot",
+      "id": "2nAxY2JJMLI1WI9J",
+      "updatedAt": "2026-01-08T23:27:55.331Z",
+      "createdAt": "2026-01-08T23:27:55.331Z"
+    }
+  ]
+}
