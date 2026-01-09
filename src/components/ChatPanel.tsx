@@ -17,14 +17,15 @@ export function ChatPanel({ identifier, onTaskCreated }: ChatPanelProps) {
     {
       id: "welcome",
       role: "assistant",
-      content: `Hi! I'm your task assistant. Here's what I can do:
+      content: `👋 Hey! I'm your AI-powered task assistant.
 
-• **add: [task]** - Create a new task
-• **list** - Show your recent tasks
-• **done: [task_id]** - Mark a task complete
-• **help** - Show this message
+You can chat with me naturally or use these quick commands:
 
-Try saying "add: Schedule dentist appointment"`,
+• **add:** followed by your task description
+• **list** to see your recent tasks
+• **done:** followed by a task ID
+
+Ask me anything! I'm here to help organize your day. ✨`,
       timestamp: new Date(),
     },
   ]);
@@ -70,21 +71,21 @@ Try saying "add: Schedule dentist appointment"`,
       const assistantMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: data.reply || "Command processed.",
+        content: data.reply || "I'm processing your request...",
         timestamp: new Date(),
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
 
-      // Se foi um comando de adicionar task, notificar para atualizar lista
-      if (input.toLowerCase().startsWith("add:") && onTaskCreated) {
-        onTaskCreated();
+      // Se uma task foi criada, notificar para atualizar lista
+      if (data.taskCreated && onTaskCreated) {
+        setTimeout(() => onTaskCreated(), 500); // Pequeno delay para dar tempo do banco
       }
     } catch {
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: "Sorry, something went wrong. Please try again.",
+        content: "Oops! Something went wrong. Please try again. 😅",
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
